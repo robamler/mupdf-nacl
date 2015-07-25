@@ -374,8 +374,11 @@ pdf_xref_size_from_old_trailer(pdf_document *doc, pdf_lexbuf *buf)
 		if (!s)
 			fz_throw(doc->ctx, FZ_ERROR_GENERIC, "invalid range marker in xref");
 		len = fz_atoi(fz_strsep(&s, " "));
+/* willus.com -- no warning */
+/*
 		if (len < 0)
 			fz_throw(doc->ctx, FZ_ERROR_GENERIC, "xref range marker must be positive");
+*/
 
 		/* broken pdfs where the section is not on a separate line */
 		if (s && *s != '\0')
@@ -678,7 +681,10 @@ pdf_read_xref(pdf_document *doc, int ofs, pdf_lexbuf *buf)
 	}
 	fz_catch(ctx)
 	{
+/* willus.com -- no warning */
+/*
 		fz_rethrow_message(ctx, "cannot read xref (ofs=%d)", ofs);
+*/
 	}
 	return trailer;
 }
@@ -753,7 +759,10 @@ read_xref_section(pdf_document *doc, int ofs, pdf_lexbuf *buf, ofs_list *offsets
 	}
 	fz_catch(ctx)
 	{
+/* willus.com -- no warning */
+/*
 		fz_rethrow_message(ctx, "cannot read xref at offset %d", ofs);
+*/
 	}
 
 	return prevofs;
@@ -1099,7 +1108,10 @@ pdf_init_document(pdf_document *doc)
 	{
 		pdf_free_xref_sections(doc);
 		fz_rethrow_if(ctx, FZ_ERROR_TRYLATER);
+/* willus.com -- be quiet */
+/*
 		fz_warn(ctx, "trying to repair broken xref");
+*/
 		repaired = 1;
 	}
 

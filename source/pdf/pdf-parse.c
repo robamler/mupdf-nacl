@@ -598,9 +598,13 @@ skip:
 		if (c == '\r')
 		{
 			c = fz_peek_byte(file);
+/* willus.com -- no warning */
+/*
 			if (c != '\n')
 				fz_warn(ctx, "line feed missing after stream begin marker (%d %d R)", num, gen);
 			else
+*/
+if (c=='\n')
 				fz_read_byte(file);
 		}
 		stm_ofs = fz_tell(file);
