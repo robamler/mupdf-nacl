@@ -39,7 +39,7 @@
 
 #ifdef __APPLE__
 #define HAVE_SIGSETJMP
-#elif defined(__unix)
+#elif (defined(__unix) && !defined(__NACL__))
 #define HAVE_SIGSETJMP
 #endif
 
