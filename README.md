@@ -70,7 +70,7 @@ Compilation
 
 1. Go to the "naclports" directory you created in step 5 under "Prerequisites" above and compile some required libraries:
    ```
-   cd ~/naclports
+   cd ~/naclports/src
    NACL_ARCH=pnacl make zlib libpng freetype jpeg8d bzip2
    ```
 
