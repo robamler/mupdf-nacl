@@ -67,6 +67,11 @@ bezier(fz_context *ctx, fz_gel *gel, const fz_matrix *ctm, float flatness,
 	bezier(ctx, gel, ctm, flatness, xabcd, yabcd, xbcd, ybcd, xcd, ycd, xd, yd, depth + 1);
 }
 
+
+#ifdef quad
+#undef quad
+#endif
+
 static void
 quad(fz_context *ctx, fz_gel *gel, const fz_matrix *ctm, float flatness,
 	float xa, float ya,
