@@ -5,7 +5,10 @@
 
 #ifndef SHARE_JPEG
 typedef void * backing_store_ptr;
+/* willus.com -- comment out jmemcust include */
+/*
 #include "jmemcust.h"
+*/
 #endif
 
 typedef struct fz_dctd_s fz_dctd;
@@ -31,6 +34,12 @@ struct fz_dctd_s
 	unsigned char buffer[4096];
 };
 
+/* willus mod:  make sure SHARE_JPEG is defined */
+#ifndef SHARE_JPEG
+#define SHARE_JPEG
+#endif
+
+/* willus mod */
 #ifdef SHARE_JPEG
 
 #define JZ_DCT_STATE_FROM_CINFO(c) (fz_dctd *)(c->client_data)

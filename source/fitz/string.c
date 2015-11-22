@@ -354,6 +354,11 @@ fz_runelen(int c)
 
 float fz_atof(const char *s)
 {
+/* willus mod:  #if-#else-#endif */
+#if (!defined(__SSE__))
+    return(atof(s));
+#else
+
 	double d;
 
 	/* The errno voodoo here checks for us reading numbers that are too
@@ -368,6 +373,7 @@ float fz_atof(const char *s)
 	}
 	d = fz_clampd(d, -FLT_MAX, FLT_MAX);
 	return (float)d;
+#endif
 }
 
 int fz_atoi(const char *s)

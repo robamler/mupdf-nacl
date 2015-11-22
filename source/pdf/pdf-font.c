@@ -79,6 +79,15 @@ static const char *clean_font_name(const char *fontname)
 	return fontname;
 }
 
+
+/* SumatraPDF: expose clean_font_name */
+const char *
+pdf_clean_base14_name(const char *fontname)
+{
+	return clean_font_name(fontname);
+}
+
+
 /*
  * FreeType and Rendering glue
  */
@@ -255,6 +264,9 @@ pdf_load_system_font(fz_context *ctx, pdf_font_desc *fontdesc, char *fontname, c
 		italic = 1;
 	if (strstr(fontname, "Oblique"))
 		italic = 1;
+	/* cf. https://code.google.com/p/sumatrapdf/issues/detail?id=2280 */
+	if (strstr(fontname, "Courier"))
+		mono = 1;
 
 	if (fontdesc->flags & PDF_FD_FIXED_PITCH)
 		mono = 1;
@@ -293,6 +305,7 @@ pdf_load_embedded_font(fz_context *ctx, pdf_document *doc, pdf_font_desc *fontde
 {
 	fz_buffer *buf;
 
+    buf=NULL; /* WILLUS: Avoid compiler warning */
 	fz_try(ctx)
 	{
 		buf = pdf_load_stream(ctx, doc, pdf_to_num(ctx, stmref), pdf_to_gen(ctx, stmref));
@@ -406,6 +419,36 @@ pdf_new_font_desc(fz_context *ctx)
 
 	return fontdesc;
 }
+
+
+/* SumatraPDF: provide a bullet fallback font */
+static pdf_font_desc *
+pdf_load_bullet_font(fz_context *ctx)
+{
+	pdf_font_desc *fontdesc = pdf_new_font_desc(ctx);
+	int gid, i;
+
+	fz_try(ctx)
+	{
+		pdf_load_builtin_font(ctx, fontdesc, "Symbol", 0);
+		fontdesc->encoding = pdf_new_identity_cmap(ctx, 0, 1);
+		fontdesc->cid_to_gid_len = 256;
+		fontdesc->cid_to_gid = fz_malloc_array(ctx, 256, sizeof(unsigned short));
+		gid = FT_Get_Name_Index(fontdesc->font->ft_face, "bullet");
+		for (i = 0; i < 256; i++)
+			fontdesc->cid_to_gid[i] = gid;
+		FT_Set_Char_Size(fontdesc->font->ft_face, 1000, 1000, 72, 72);
+		pdf_set_default_hmtx(ctx, fontdesc, ft_width(ctx, fontdesc, 0));
+	}
+	fz_catch(ctx)
+	{
+		pdf_drop_font(ctx, fontdesc);
+		fz_rethrow(ctx);
+	}
+
+	return fontdesc;
+}
+
 
 /*
  * Simple fonts (Type1 and TrueType)
@@ -616,7 +659,8 @@ pdf_load_simple_font_by_name(fz_context *ctx, pdf_document *doc, pdf_obj *dict, 
 		}
 
 		/* encode by glyph name where we can */
-		if (kind == TRUETYPE)
+		/* SumatraPDF: don't encode name-less TrueType fonts just by name (required for Windows 8 fonts) */
+		if (kind == TRUETYPE || (ft_kind(face) == TRUETYPE && !FT_HAS_GLYPH_NAMES(face)))
 		{
 			/* Unicode cmap */
 			if (!symbolic && face->charmap && face->charmap->platform_id == 3)
@@ -630,6 +674,9 @@ pdf_load_simple_font_by_name(fz_context *ctx, pdf_document *doc, pdf_obj *dict, 
 							etable[i] = FT_Get_Name_Index(face, estrings[i]);
 						else
 							etable[i] = ft_char_index(face, aglcode);
+						/* SumatraPDF: prefer non-zero gids */
+						if (!etable[i])
+							etable[i] = ft_char_index(face, i);
 					}
 				}
 			}
@@ -637,6 +684,14 @@ pdf_load_simple_font_by_name(fz_context *ctx, pdf_document *doc, pdf_obj *dict, 
 			/* MacRoman cmap */
 			else if (!symbolic && face->charmap && face->charmap->platform_id == 1)
 			{
+				/* cf. http://code.google.com/p/sumatrapdf/issues/detail?id=2123 */
+				if (pdf_is_name(ctx, encoding) && !strcmp(pdf_to_name(ctx, encoding), "MacExpertEncoding"))
+				{
+					if (FT_HAS_GLYPH_NAMES(face))
+						for (i = 0; i < 256; i++)
+							estrings[i] = NULL;
+				}
+				else
 				for (i = 0; i < 256; i++)
 				{
 					if (estrings[i])
@@ -646,6 +701,9 @@ pdf_load_simple_font_by_name(fz_context *ctx, pdf_document *doc, pdf_obj *dict, 
 							etable[i] = FT_Get_Name_Index(face, estrings[i]);
 						else
 							etable[i] = ft_char_index(face, k);
+						/* SumatraPDF: prefer non-zero gids */
+						if (!etable[i])
+							etable[i] = ft_char_index(face, i);
 					}
 				}
 			}
@@ -660,6 +718,13 @@ pdf_load_simple_font_by_name(fz_context *ctx, pdf_document *doc, pdf_obj *dict, 
 						etable[i] = FT_Get_Name_Index(face, estrings[i]);
 						if (etable[i] == 0)
 							etable[i] = ft_char_index(face, i);
+						/* cf. http://code.google.com/p/sumatrapdf/issues/detail?id=1872 */
+						if (etable[i] == 0 && symbolic)
+						{
+							int aglcode = pdf_lookup_agl(estrings[i]);
+							if (aglcode)
+								etable[i] = ft_char_index(face, aglcode);
+						}
 					}
 				}
 			}
@@ -731,6 +796,13 @@ pdf_load_simple_font_by_name(fz_context *ctx, pdf_document *doc, pdf_obj *dict, 
 			for (i = 0; i < last - first + 1; i++)
 			{
 				int wid = pdf_to_int(ctx, pdf_array_get(ctx, widths, i));
+				/* cf. http://code.google.com/p/sumatrapdf/issues/detail?id=1616 */
+				if (!wid && i >= pdf_array_len(ctx, widths))
+				{
+					fz_warn(ctx, "font width missing for glyph %d (%d %d R)", i + first, pdf_to_num(ctx, dict), pdf_to_gen(ctx, dict));
+					FT_Set_Char_Size(face, 1000, 1000, 72, 72);
+					wid = ft_width(ctx, fontdesc, i + first);
+				}
 				pdf_add_hmtx(ctx, fontdesc, i + first, i + first, wid);
 			}
 		}
@@ -962,9 +1034,22 @@ load_cid_font(fz_context *ctx, pdf_document *doc, pdf_obj *dict, pdf_obj *encodi
 				fontdesc->to_ttf_cmap = pdf_load_system_cmap(ctx, "Adobe-Japan2-UCS2");
 			else if (!strcmp(collection, "Adobe-Korea1"))
 				fontdesc->to_ttf_cmap = pdf_load_system_cmap(ctx, "Adobe-Korea1-UCS2");
+			/* cf. http://code.google.com/p/sumatrapdf/issues/detail?id=2318 */
+			else if (!strcmp(collection, "Adobe-Identity") && fontdesc->font->ft_filepath)
+				fontdesc->font->ft_substitute = 0;
 		}
 
+		/* cf. http://code.google.com/p/sumatrapdf/issues/detail?id=1961 */
+		fz_try(ctx)
+		{
 		pdf_load_to_unicode(ctx, doc, fontdesc, NULL, collection, to_unicode);
+		/* cf. http://code.google.com/p/sumatrapdf/issues/detail?id=1961 */
+		}
+		fz_catch(ctx)
+		{
+			fz_warn(ctx, "cannot load ToUnicode CMap");
+		}
+
 
 		/* If we have an identity encoding, we're supposed to use the glyph ids directly.
 		 * If we only have a substitute font, that won't work.
@@ -1119,6 +1204,14 @@ pdf_load_font_descriptor(fz_context *ctx, pdf_document *doc, pdf_font_desc *font
 	/* Prefer BaseFont; don't bother with FontName */
 	fontname = basefont;
 
+	/* SumatraPDF: handle /BaseFont /Arial,Bold+000041 /FontName /Arial,Bold */
+	if (strchr(basefont, '+') && pdf_is_name(ctx, pdf_dict_gets(ctx, dict, "FontName")))
+		fontname = pdf_to_name(ctx, pdf_dict_gets(ctx, dict, "FontName"));
+
+	/* cf. http://code.google.com/p/sumatrapdf/issues/detail?id=1616 */
+	if (strlen(fontname) > 7 && fontname[6] == '+')
+		fontname += 7;
+
 	fontdesc->flags = pdf_to_int(ctx, pdf_dict_get(ctx, dict, PDF_NAME_Flags));
 	fontdesc->italic_angle = pdf_to_real(ctx, pdf_dict_get(ctx, dict, PDF_NAME_ItalicAngle));
 	fontdesc->ascent = pdf_to_real(ctx, pdf_dict_get(ctx, dict, PDF_NAME_Ascent));
@@ -1163,11 +1256,22 @@ pdf_load_font_descriptor(fz_context *ctx, pdf_document *doc, pdf_font_desc *font
 		if (FT_IS_TRICKY(face) || is_dynalab(fontdesc->font->name))
 			fontdesc->font->ft_hint = 1;
 
+		/* cf. https://code.google.com/p/sumatrapdf/issues/detail?id=2489 */
+		else if (!strcmp(fontdesc->font->name, "\xBC\xD0\xB7\xA2\xC5\xE9"))
+			fontdesc->font->ft_hint = 1;
+
 		if (fontdesc->ascent == 0.0f)
 			fontdesc->ascent = 1000.0f * face->ascender / face->units_per_EM;
 
 		if (fontdesc->descent == 0.0f)
 			fontdesc->descent = 1000.0f * face->descender / face->units_per_EM;
+	}
+	/* cf. https://code.google.com/p/sumatrapdf/issues/detail?id=2404 */
+	if (!(fontdesc->flags & PDF_FD_SYMBOLIC) &&
+		face && face->num_charmaps > 0 && face->charmaps[0]->encoding == FT_ENCODING_MS_SYMBOL &&
+		!strncmp(fontdesc->font->name, "Symbol", 6))
+	{
+		fontdesc->flags |= PDF_FD_SYMBOLIC;
 	}
 }
 

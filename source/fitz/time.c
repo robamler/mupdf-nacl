@@ -1,4 +1,5 @@
-#ifdef _MSC_VER
+/* willus mod:  Change _MSC_VER to _WIN32 */
+#ifdef _WIN32
 
 #include "mupdf/fitz.h"
 
@@ -7,7 +8,8 @@
 
 #ifndef _WINRT
 
-#define DELTA_EPOCH_IN_MICROSECS 11644473600000000Ui64
+/* willus mod:  Change ending to ULL */
+#define DELTA_EPOCH_IN_MICROSECS 11644473600000000ULL
 
 int gettimeofday(struct timeval *tv, struct timezone *tz)
 {

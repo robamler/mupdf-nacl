@@ -59,8 +59,11 @@ fz_new_font(fz_context *ctx, const char *name, int use_glyph_bbox, int glyph_cou
 	}
 	else
 	{
+/* willus.com mod -- no warning */
+/*
 		if (use_glyph_bbox)
 			fz_warn(ctx, "not building glyph bbox table for font '%s' with %d glyphs", font->name, glyph_count);
+*/
 		font->bbox_count = 0;
 		font->bbox_table = NULL;
 	}
